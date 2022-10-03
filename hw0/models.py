@@ -68,21 +68,40 @@ class MultiTaskNet(nn.Module):
 
     """
 
-    def __init__(self, num_users, num_items, embedding_dim=32, layer_sizes=[96, 64],
-                 sparse=False, embedding_sharing=True):
-
+    def __init__(
+        self, num_users, num_items, embedding_dim=32, layer_sizes=[96, 64], sparse=False, embedding_sharing=True
+    ):
         super().__init__()
 
         self.embedding_dim = embedding_dim
 
-        #********************************************************
-        #******************* YOUR CODE HERE *********************
-        #********************************************************
+        # ********************************************************
+        # ******************* YOUR CODE HERE *********************
+        # ********************************************************
+        self.embedding_sharing = embedding_sharing
 
+        if self.embedding_sharing:
+            self.user = ScaledEmbedding(num_users, embedding_dim)
+            self.query = ScaledEmbedding(num_items, embedding_dim)
+        else:
+            # When not sharing embeddings, we learn separate representations for our two tasks.
+            self.user_score = ScaledEmbedding(num_users, embedding_dim)
+            self.query_score = ScaledEmbedding(num_items, embedding_dim)
 
-        #********************************************************
-        #********************************************************
-        #********************************************************
+            self.user_likelihood = ScaledEmbedding(num_users, embedding_dim)
+            self.query_likelihood = ScaledEmbedding(num_items, embedding_dim)
+
+        self.alpha = ZeroEmbedding(num_users, 1)
+        self.beta = ZeroEmbedding(num_items, 1)
+
+        self.mlp = nn.Sequential(
+            nn.Linear(layer_sizes[0], layer_sizes[1]),
+            nn.ReLU(),
+            nn.Linear(layer_sizes[1], 1),
+        )
+        # ********************************************************
+        # ********************************************************
+        # ********************************************************
 
     def forward(self, user_ids, item_ids):
         """
@@ -104,16 +123,41 @@ class MultiTaskNet(nn.Module):
         score: tensor
             Tensor of user-item score predictions of shape (batch,)
         """
-        #********************************************************
-        #******************* YOUR CODE HERE *********************
-        #********************************************************
+        # ********************************************************
+        # ******************* YOUR CODE HERE *********************
+        # ********************************************************
+        user_bias = self.alpha(user_ids)  # (n x 1)
+        item_bias = self.beta(item_ids)  # (n x 1)
 
+        if self.embedding_sharing:
+            # Calculate likelihood predictions
+            user_embeddings = self.user(user_ids)  # (n x d)
+            item_embeddings = self.query(item_ids)  # (n x d)
+            predictions = torch.sum(user_embeddings * item_embeddings, dim=1).unsqueeze(1) + user_bias + item_bias
 
-        #********************************************************
-        #********************************************************
-        #********************************************************
+            # Calculate score predictions
+            mlp_inputs = torch.cat((user_embeddings, item_embeddings, user_embeddings * item_embeddings), 1)
+            score = self.mlp(mlp_inputs)
+        else:
+            # Calculate likelihood predictions
+            user_embeddings = self.user_likelihood(user_ids)  # (n x d)
+            item_embeddings = self.query_likelihood(item_ids)  # (n x d)
+            predictions = torch.sum(user_embeddings * item_embeddings, dim=1).unsqueeze(1) + user_bias + item_bias
+
+            # Calculate score predictions
+            user_embeddings = self.user_score(user_ids)  # (n x d)
+            item_embeddings = self.query_score(item_ids)  # (n x d)
+
+            mlp_inputs = torch.cat((user_embeddings, item_embeddings, user_embeddings * item_embeddings), 1)
+            score = self.mlp(mlp_inputs)
+
+        predictions = predictions.squeeze()
+        score = score.squeeze()
+        # ********************************************************
+        # ********************************************************
+        # ********************************************************
         ## Make sure you return predictions and scores of shape (batch,)
         if (len(predictions.shape) > 1) or (len(score.shape) > 1):
             raise ValueError("Check your shapes!")
-        
+
         return predictions, score
