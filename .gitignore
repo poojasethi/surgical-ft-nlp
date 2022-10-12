@@ -130,3 +130,6 @@ dmypy.json
 
 # Mac files
 .DS_store
+
+# Custom
+hw0/movielens_data
