@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import IterableDataset
 import time
 import imageio
+from pathlib import Path
 
 
 def get_images(paths, labels, nb_samples=None, shuffle=True):
@@ -23,9 +24,7 @@ def get_images(paths, labels, nb_samples=None, shuffle=True):
     else:
         sampler = lambda x: x
     images_labels = [
-        (i, os.path.join(path, image))
-        for i, path in zip(labels, paths)
-        for image in sampler(os.listdir(path))
+        (i, os.path.join(path, image)) for i, path in zip(labels, paths) for image in sampler(os.listdir(path))
     ]
     if shuffle:
         random.shuffle(images_labels)
@@ -126,15 +125,58 @@ class DataGenerator(IterableDataset):
             in the same order, otherwise the one-to-one mapping between images
             and labels may get messed up. Hint: there is a clever way to use
             np.random.shuffle here.
-            
-            3. The value for `self.num_samples_per_class` will be set to K+1 
-            since for K-shot classification you need to sample K supports and 
+
+            3. The value for `self.num_samples_per_class` will be set to K+1
+            since for K-shot classification you need to sample K supports and
             1 query.
         """
 
         #############################
         #### YOUR CODE GOES HERE ####
-        pass
+
+        # Sample N different characters from the train, test, or validation folder.
+        n_characters = random.sample(self.folders, self.num_classes)
+        assert len(n_characters) == self.num_classes
+
+        # Initialize the matrix of one-hot encodings of class labels.
+        one_hot_labels = np.eye(self.num_classes)
+
+        # Load K + 1 images per character and collect their corresponding labels.
+        images = []
+        labels = []
+        for i, character_path in enumerate(n_characters):
+            all_image_paths = [p for p in Path(character_path).iterdir()]
+            sampled_image_paths = random.sample(all_image_paths, self.num_samples_per_class)
+
+            character_images = np.array([self.image_file_to_array(p, (784)) for p in sampled_image_paths])
+            images.append(character_images)
+
+            # The label will be the same for all K + 1 sampled images, we just need to repeat the label.
+            label = one_hot_labels[i]
+            character_labels = np.repeat(label[np.newaxis, :], self.num_samples_per_class, axis=0)
+            labels.append(character_labels)
+
+        images = np.array(images)
+        labels = np.array(labels)
+
+        assert images.shape == (self.num_classes, self.num_samples_per_class, 784)
+        assert labels.shape == (self.num_classes, self.num_samples_per_class, self.num_classes)
+
+        # Format data into appropriate shape.
+        images = np.swapaxes(images, 0, 1)
+        labels = np.swapaxes(labels, 0, 1)
+
+        assert images.shape == (self.num_samples_per_class, self.num_classes, 784)
+        assert labels.shape == (self.num_samples_per_class, self.num_classes, self.num_classes)
+
+        # Shuffle the order of the classes and labels in the K + 1 (query) set.
+        randomize = np.arange(self.num_classes)
+        np.random.shuffle(randomize)
+
+        images[self.num_samples_per_class - 1] = images[self.num_samples_per_class - 1][randomize]
+        labels[self.num_samples_per_class - 1] = labels[self.num_samples_per_class - 1][randomize]
+
+        return images, labels
         #############################
 
     def __iter__(self):
