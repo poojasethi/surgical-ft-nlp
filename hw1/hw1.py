@@ -82,12 +82,12 @@ class MANN(nn.Module):
         #### YOUR CODE GOES HERE ####
         batch_size, num_samples_per_class, num_classes, _ = preds.shape
 
-        # Get the predictions and labels only for the support set
+        # Get the predictions and labels only for the query set
         test_preds = torch.squeeze(preds[:, num_samples_per_class - 1, :, :])
         test_labels = torch.squeeze(labels[:, num_samples_per_class - 1, :, :])
 
         loss = F.cross_entropy(test_preds, test_labels)
-        return loss.item()
+        return loss
         #############################
 
 
