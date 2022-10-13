@@ -169,7 +169,7 @@ class DataGenerator(IterableDataset):
         assert images.shape == (self.num_samples_per_class, self.num_classes, 784)
         assert labels.shape == (self.num_samples_per_class, self.num_classes, self.num_classes)
 
-        # Shuffle the order of the classes and labels in the K + 1 (query) set.
+        # Shuffle the order of the images and labels in the K + 1 (query) set.
         randomize = np.arange(self.num_classes)
         np.random.shuffle(randomize)
 

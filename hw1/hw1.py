@@ -3,6 +3,7 @@ import argparse
 import os
 import random
 import torch
+import copy
 import math
 import numpy as np
 import torch.nn.functional as F
@@ -46,7 +47,24 @@ class MANN(nn.Module):
         """
         #############################
         #### YOUR CODE GOES HERE ####
-        pass
+        # "Clean" the labels by replacing the query set labels with 0's.
+        batch_size, num_samples_per_class, num_classes, _ = input_labels.shape
+        cleaned_labels = copy.deepcopy(input_labels)
+        cleaned_labels[:, num_samples_per_class - 1, :, :] = torch.zeros((num_classes, num_classes))
+
+        # Concatenate the input images and cleaned labels, to get a vector of shape [B, K+1, N, N + 784]
+        lstm_input = torch.cat((cleaned_labels, input_images), dim=3)
+
+        # Reshape the input into [B, (K + 1) * N, N + 784] so that the examples can be sequentially passed through.
+        lstm_input = torch.reshape(lstm_input, (batch_size, -1, num_classes + 784))
+        assert lstm_input.shape == (batch_size, num_samples_per_class * num_classes, num_classes + 784)
+
+        out1, (h1, c1) = self.layer1(lstm_input.float())
+        out2, (h2, c2) = self.layer2(out1)
+
+        output = out2.reshape(batch_size, num_samples_per_class, num_classes, num_classes)
+
+        return output
         #############################
 
     def loss_function(self, preds, labels):
@@ -62,7 +80,14 @@ class MANN(nn.Module):
         """
         #############################
         #### YOUR CODE GOES HERE ####
-        pass
+        batch_size, num_samples_per_class, num_classes, _ = preds.shape
+
+        # Get the predictions and labels only for the support set
+        test_preds = torch.squeeze(preds[:, num_samples_per_class - 1, :, :])
+        test_labels = torch.squeeze(labels[:, num_samples_per_class - 1, :, :])
+
+        loss = F.cross_entropy(test_preds, test_labels)
+        return loss
         #############################
 
 
@@ -85,9 +110,7 @@ def main(config):
     else:
         device = torch.device("cpu")
 
-    writer = SummaryWriter(
-        f"runs/{config.num_classes}_{config.num_shot}_{config.random_seed}_{config.hidden_dim}"
-    )
+    writer = SummaryWriter(f"runs/{config.num_classes}_{config.num_shot}_{config.random_seed}_{config.hidden_dim}")
 
     # Download Omniglot Dataset
     if not os.path.isdir("./omniglot_resized"):
@@ -161,9 +184,7 @@ def main(config):
             pred, tls = train_step(i, l, model, optim, eval=True)
             print("Train Loss:", ls.cpu().numpy(), "Test Loss:", tls.cpu().numpy())
             writer.add_scalar("Loss/test", tls, step)
-            pred = torch.reshape(
-                pred, [-1, config.num_shot + 1, config.num_classes, config.num_classes]
-            )
+            pred = torch.reshape(pred, [-1, config.num_shot + 1, config.num_classes, config.num_classes])
             pred = torch.argmax(pred[:, -1, :, :], axis=2)
             l = torch.argmax(l[:, -1, :, :], axis=2)
             acc = pred.eq(l).sum().item() / (config.meta_batch_size * config.num_classes)
