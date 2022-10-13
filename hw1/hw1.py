@@ -87,7 +87,7 @@ class MANN(nn.Module):
         test_labels = torch.squeeze(labels[:, num_samples_per_class - 1, :, :])
 
         loss = F.cross_entropy(test_preds, test_labels)
-        return loss
+        return loss.item()
         #############################
 
 
