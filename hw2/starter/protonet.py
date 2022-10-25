@@ -114,29 +114,52 @@ class ProtoNet:
             # For a given task, compute the prototypes and the protonet loss.
             # Use F.cross_entropy to compute classification losses.
             # Use util.score to compute accuracies.
-
             # Make sure to populate loss_batch, accuracy_support_batch, and
             # accuracy_query_batch.
 
             # Get the latent representation of the support images.
-            images_support_latent = self._network(images_support)
+            images_support_latent = self._network(images_support)  # (NK, latent_size)
+            images_query_latent = self._network(images_query)  # (NQ, latent_size)
 
-            # For each distinct class in the batch, calculate the prototype vector: c_n
-            prototype =
+            # For each distinct class, calculate the prototype vector: (num_classes, latent_size)
+            # Reference: https://stackoverflow.com/questions/62424100/group-rows-by-specific-value-in-one-column-and-calculate-the-mean-in-pytorch
+            classes, counts = torch.unique(labels_support, return_counts=True, sorted=True)
+            num_classes = classes.shape[0]
+            latent_size = images_support_latent.shape[1]
 
-            # Next, for each image in the query set, calculate its distance to each of the support vectors.
+            prototypes = torch.zeros(num_classes, latent_size, dtype=images_support_latent.dtype)
+            prototypes.index_add_(0, labels_support, images_support_latent)
+            prototypes /= counts[:, None]
+            assert prototypes.shape == (num_classes, latent_size)
+
+            # Next, calculate the squared Euclidean distance to each image to each of the prototype vectors.
+            images_support_distances = []
+            images_query_distances = []
+
+            for c in range(num_classes):
+                images_support_distances.append(F.pairwise_distance(images_support_latent, prototypes[c], p=2).square())
+                images_query_distances.append(F.pairwise_distance(images_query_latent, prototypes[c], p=2).square())
+
+            images_support_distances = torch.stack(images_support_distances, dim=1)  # (NK, num_classes)
+            images_query_distances = torch.stack(images_query_distances, dim=1)  # (NQ, num_classes)
 
             # Negate these distances to get similarity scores.
+            images_support_scores = -1 * images_support_distances
+            images_query_scores = -1 * images_query_distances
 
-            # Take the softmax over the scores to get a probability distribution per class, then take the score corresponding to the arg max.
+            # Next, obtain the support set and query set logits by applying softmax.
+            images_support_logits = F.softmax(images_support_scores, dim=1)
+            images_query_logits = F.softmax(images_query_scores, dim=1)
 
-            #
+            # Compute the classification loss for the task.
+            loss = F.cross_entropy(images_query_logits, labels_query)
 
-            #
-
-            loss_batch = 0
-            accuracy_support_batch = 0
-            accuracy_query_batch = 0
+            # Use util.score to calculate the accuracy for the support and query batches.
+            accuracy_support = util.score(images_support_logits, labels_support)
+            accuracy_query = util.score(images_query_logits, labels_query)
+            loss_batch.append(loss)
+            accuracy_support_batch.append(accuracy_support)
+            accuracy_query_batch.append(accuracy_query)
             # ********************************************************
             # ******************* YOUR CODE HERE *********************
             # ********************************************************
