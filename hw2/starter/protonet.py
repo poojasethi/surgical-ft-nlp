@@ -119,8 +119,8 @@ class ProtoNet:
 
             # Get the latent representation of the support images.
             images_support_latent = self._network(images_support)  # (NK, latent_size)
-            images_query_latent = self._network(images_query)      # (NQ, latent_size)
-            
+            images_query_latent = self._network(images_query)  # (NQ, latent_size)
+
             # For each distinct class, calculate the prototype vector: (num_classes, latent_size)
             # Reference: https://stackoverflow.com/questions/62424100/group-rows-by-specific-value-in-one-column-and-calculate-the-mean-in-pytorch
             classes, counts = torch.unique(labels_support, return_counts=True, sorted=True)
@@ -144,12 +144,8 @@ class ProtoNet:
             images_query_distances = torch.stack(images_query_distances, dim=1)  # (NQ, num_classes)
 
             # Negate these distances to get similarity scores.
-            images_support_scores = -1 * images_support_distances
-            images_query_scores = -1 * images_query_distances
-
-            # Next, obtain the support set and query set logits by applying softmax.
-            images_support_logits = F.softmax(images_support_scores, dim=1)
-            images_query_logits = F.softmax(images_query_scores, dim=1)
+            images_support_logits = -1 * images_support_distances
+            images_query_logits = -1 * images_query_distances
 
             # Compute the classification loss for the task.
             loss = F.cross_entropy(images_query_logits, labels_query)
