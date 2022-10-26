@@ -14,7 +14,6 @@ import omniglot
 import util
 
 from collections import OrderedDict
-import torchviz
 
 NUM_INPUT_CHANNELS = 1
 NUM_HIDDEN_CHANNELS = 64
