@@ -152,14 +152,12 @@ class MAML:
             sorted_params = OrderedDict(parameters)
             grads = autograd.grad(loss, inputs=tuple(sorted_params.values()), create_graph=train)
 
-            # Update the parameter with the appropriate learning rate.
-            with torch.no_grad():
-                i = 0
-                for name, param in sorted_params.items():
+            # Update the parameter with the appropriate learning rate, if we are training.
+            # Note: We *don't* use 'with torch.no_grad()' here so that the outer loop can see the full computation graph.
+            if train:
+                for grad, (name, param) in zip(grads, sorted_params.items()):
                     lr = self._inner_lrs[name].item()
-                    grad = grads[i]
                     param -= lr * grad
-                    i += 1
 
             logits = self._forward(images, parameters)
             accuracy = util.score(logits, labels)
@@ -206,7 +204,6 @@ class MAML:
             # Use util.score to compute accuracies.
             # Make sure to populate outer_loss_batch, accuracies_support_batch,
             # and accuracy_query_batch.
-
             # Update the model parameters using the support set.
             parameters, accuracies_support = self._inner_loop(images_support, labels_support, train)
             accuracies_support_batch.append(accuracies_support)
