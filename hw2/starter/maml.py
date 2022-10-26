@@ -214,7 +214,6 @@ class MAML:
             logits = self._forward(images_query, parameters)
 
             loss = F.cross_entropy(logits, labels_query)
-            torchviz.make_dot(loss)
             outer_loss_batch.append(loss)
 
             accuracy_query = util.score(logits, labels_query)
