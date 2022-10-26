@@ -14,7 +14,6 @@ import omniglot
 import util
 
 from collections import OrderedDict
-import torchviz
 
 NUM_INPUT_CHANNELS = 1
 NUM_HIDDEN_CHANNELS = 64
@@ -215,7 +214,6 @@ class MAML:
             logits = self._forward(images_query, parameters)
 
             loss = F.cross_entropy(logits, labels_query)
-            torchviz.make_dot(loss)
             outer_loss_batch.append(loss)
 
             accuracy_query = util.score(logits, labels_query)
