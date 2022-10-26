@@ -14,6 +14,7 @@ import omniglot
 import util
 
 from collections import OrderedDict
+import torchviz
 
 NUM_INPUT_CHANNELS = 1
 NUM_HIDDEN_CHANNELS = 64
@@ -139,31 +140,34 @@ class MAML:
         # Make sure to populate accuracies and update parameters.
         # Use F.cross_entropy to compute classification losses.
         # Use util.score to compute accuracies.
+        torch.autograd.set_detect_anomaly(True)
 
         # Calculate the accuracy before any steps are taken.
         logits = self._forward(images, parameters)
         accuracy = util.score(logits, labels)
         accuracies.append(accuracy)
 
+        sorted_params = OrderedDict(parameters)
+
         # Perform the adaptation steps, i.e., update the network parameters, and re-compute the accuracy at each step.
         for _ in range(self._num_inner_steps):
             loss = F.cross_entropy(logits, labels)
-
-            sorted_params = OrderedDict(parameters)
             grads = autograd.grad(loss, inputs=tuple(sorted_params.values()), create_graph=train)
 
             # Update the parameter with the appropriate learning rate, if we are training.
-            # Note: We *don't* use 'with torch.no_grad()' here so that the outer loop can see the full computation graph.
             if train:
                 for grad, (name, param) in zip(grads, sorted_params.items()):
                     lr = self._inner_lrs[name].item()
+                    param = param.clone()
                     param -= lr * grad
+                    sorted_params[name] = param
 
-            logits = self._forward(images, parameters)
+            logits = self._forward(images, sorted_params)
             accuracy = util.score(logits, labels)
             accuracies.append(accuracy)
 
         assert len(accuracies) == self._num_inner_steps + 1
+        parameters = sorted_params
         # ********************************************************
         # ******************* YOUR CODE HERE *********************
         # ********************************************************
@@ -210,8 +214,9 @@ class MAML:
 
             logits = self._forward(images_query, parameters)
 
-            outer_loss = F.cross_entropy(logits, labels_query)
-            outer_loss_batch.append(outer_loss)
+            loss = F.cross_entropy(logits, labels_query)
+            torchviz.make_dot(loss)
+            outer_loss_batch.append(loss)
 
             accuracy_query = util.score(logits, labels_query)
             accuracy_query_batch.append(accuracy_query)
