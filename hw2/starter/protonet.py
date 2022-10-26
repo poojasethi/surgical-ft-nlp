@@ -119,15 +119,15 @@ class ProtoNet:
 
             # Get the latent representation of the support images.
             images_support_latent = self._network(images_support)  # (NK, latent_size)
-            images_query_latent = self._network(images_query)  # (NQ, latent_size)
-
+            images_query_latent = self._network(images_query)      # (NQ, latent_size)
+            
             # For each distinct class, calculate the prototype vector: (num_classes, latent_size)
             # Reference: https://stackoverflow.com/questions/62424100/group-rows-by-specific-value-in-one-column-and-calculate-the-mean-in-pytorch
             classes, counts = torch.unique(labels_support, return_counts=True, sorted=True)
             num_classes = classes.shape[0]
             latent_size = images_support_latent.shape[1]
 
-            prototypes = torch.zeros(num_classes, latent_size, dtype=images_support_latent.dtype)
+            prototypes = torch.zeros(num_classes, latent_size, dtype=images_support_latent.dtype).to(DEVICE)
             prototypes.index_add_(0, labels_support, images_support_latent)
             prototypes /= counts[:, None]
             assert prototypes.shape == (num_classes, latent_size)
