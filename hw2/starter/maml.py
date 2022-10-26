@@ -153,13 +153,12 @@ class MAML:
             loss = F.cross_entropy(logits, labels)
             grads = autograd.grad(loss, inputs=tuple(sorted_params.values()), create_graph=train)
 
-            # Update the parameter with the appropriate learning rate, if we are training.
-            if train:
-                for grad, (name, param) in zip(grads, sorted_params.items()):
-                    lr = self._inner_lrs[name].item()
-                    param = param.clone()
-                    param -= lr * grad
-                    sorted_params[name] = param
+            # Update the parameter with the appropriate learning rate.
+            for grad, (name, param) in zip(grads, sorted_params.items()):
+                lr = self._inner_lrs[name].item()
+                param = param.clone()
+                param -= lr * grad
+                sorted_params[name] = param
 
             logits = self._forward(images, sorted_params)
             accuracy = util.score(logits, labels)
