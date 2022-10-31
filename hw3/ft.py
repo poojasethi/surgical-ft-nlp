@@ -3,6 +3,7 @@ import argparse
 import torch
 import transformers
 import torch.nn as nn
+import torch.nn.functional as F
 import utils
 import copy
 import numpy as np
@@ -72,7 +73,7 @@ def parameters_to_fine_tune(model: nn.Module, mode: str) -> List:
     """
     # YOUR CODE HERE
     if mode == "all":
-        pass
+        return model.parameters()
     elif mode == "last":
         pass
     elif mode == "first":
@@ -110,7 +111,7 @@ def get_loss(logits: torch.tensor, targets: torch.tensor) -> torch.tensor:
     """
     # YOUR CODE HERE
     if logits.dim() == 2:
-        pass
+        return F.cross_entropy(logits, targets)
     elif logits.dim() == 3:
         pass
     else:
@@ -144,7 +145,10 @@ def get_acc(logits, targets):
     """
     # YOUR CODE HERE
     if logits.dim() == 2:
-        pass
+        predictions = logits.argmax(dim=1)
+        correct_predictions = (predictions == targets).float()
+        accuracy = correct_predictions.sum() / len(correct_predictions)
+        return accuracy.item()
     elif logits.dim() == 3:
         pass
     else:
