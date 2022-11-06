@@ -130,7 +130,15 @@ def get_loss(logits: torch.tensor, targets: torch.tensor) -> torch.tensor:
     if logits.dim() == 2:
         return F.cross_entropy(logits, targets)
     elif logits.dim() == 3:
-        pass
+        # Reference: https://github.com/huggingface/transformers/blob/v4.24.0/src/transformers/models/gpt2/modeling_gpt2.py#L945
+        # Align the logits and the targets
+        shifted_logits = logits[:, :-1, :].contiguous()  # We ignore the logit corresponding to the last token
+        shifted_targets = targets[:, 1:].contiguous()  # We only consider the targets starting from t=1
+
+        # The default value for ignore_index is -100, but we can also explicitly set it here.
+        return F.cross_entropy(
+            shifted_logits.view(-1, shifted_logits.size(-1)), shifted_targets.view(-1), ignore_index=-100
+        )
     else:
         raise ValueError(
             f"Logits should either be 2-dim (for classification) or 3-dim (for generation); got {logits.dim()}"
@@ -167,7 +175,22 @@ def get_acc(logits, targets):
         accuracy = correct_predictions.sum() / len(correct_predictions)
         return accuracy.item()
     elif logits.dim() == 3:
-        pass
+        # Align the logits and the targets
+        shifted_logits = logits[:, :-1, :].contiguous()  # We ignore the logit corresponding to the last token
+        shifted_targets = targets[:, 1:].contiguous()  # We only consider the targets starting from t=1
+
+        predictions = shifted_logits.argmax(dim=2).squeeze()
+
+        # Don't include targets that are equal to -100 in the accuracy.
+        correct_predictions = (predictions == shifted_targets).float() - (shifted_targets == -100)
+        accuracy = correct_predictions.sum() / (len(correct_predictions) - len((shifted_targets == -100).view(-1)))
+        breakpoint()
+        return accuracy.item()
+
+        # The default value for ignore_index is -100, but we can also explicitly set it here.
+        return F.cross_entropy(
+            shifted_logits.view(-1, shifted_logits.size(-1)), shifted_targets.view(-1), ignore_index=-100
+        )
     else:
         raise ValueError(
             f"Logits should either be 2-dim (for classification) or 3-dim (for generation); got {logits.dim()}"
@@ -262,7 +285,30 @@ def tokenize_gpt2_batch(tokenizer, x, y):
             returned by the tokenizer without creating a new dictionary.
     """
     # YOUR CODE HERE
-    tokenized_sequences = None
+    sequences = [x_ + y_ for x_, y_ in zip(x, y)]
+    tokenized_sequences = tokenizer(sequences, return_tensors="pt", padding="longest")
+
+    # Construct the labels by masking out the input_ids corresponding to the prompts.
+    input_ids = tokenized_sequences["input_ids"]
+    labels = []
+
+    for i, sequence in enumerate(sequences):
+        x_input_ids = tokenizer(x[i])["input_ids"]
+        sequence_labels = copy.deepcopy(input_ids[i])
+
+        for j in range(len(x_input_ids)):
+            sequence_labels[j] = -100
+
+        for j in range(len(sequence_labels) - 1, -1, -1):
+            if sequence_labels[j] == tokenizer.pad_token_id:
+                sequence_labels[j] = -100
+            else:
+                break  # Stop once we've updated all the pad tokens.
+
+        labels.append(sequence_labels.tolist())
+
+    tokenized_sequences["labels"] = torch.IntTensor(labels)
+
     return tokenized_sequences
 
 
@@ -318,9 +364,22 @@ def ft_gpt2(model, tok, x, y, mode, dataset, batch_size=8, grad_accum=8):
         # Note: the ** operator will unpack a dictionary into keyword arguments to a function (such as your model)
 
         # YOUR CODE HERE
+        x_batch, y_batch = [x[i] for i in batch_idxs], [y[i] for i in batch_idxs]
+        tokens = tokenize_gpt2_batch(tok, x_batch, y_batch)
+        logits = model(**tokens, use_cache=False).logits
+        loss = get_loss(logits, y_batch)
+
+        # NOTE(pooja): Uncomment for debugging only.
+        model_loss = model(**tokens).loss
+
+        loss = loss / grad_accum
+        loss.backward()
+
+        if (step + 1) % grad_accum == 0:
+            optimizer.step()
+            optimizer.zero_grad()
 
         # END YOUR CODE
-
         if step % (grad_accum * 5) == 0:
             with torch.inference_mode():
                 model.eval()
