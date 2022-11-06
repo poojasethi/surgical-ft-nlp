@@ -286,21 +286,28 @@ def tokenize_gpt2_batch(tokenizer, x, y):
     """
     # YOUR CODE HERE
     sequences = [x_ + y_ for x_, y_ in zip(x, y)]
-    max_length = max([len(s) for s in sequences])
-
-    tokenized_sequences = tokenizer(return_tensors="pt", padding=True, max_length=max_length)
+    tokenized_sequences = tokenizer(sequences, return_tensors="pt", padding="longest")
 
     # Construct the labels by masking out the input_ids corresponding to the prompts.
     input_ids = tokenized_sequences["input_ids"]
     labels = []
+
     for i, sequence in enumerate(sequences):
         x_input_ids = tokenizer(x[i])["input_ids"]
-        sequence_input_ids = input_ids[i]
-        for j in range(len(x_input_ids)):
-            sequence_input_ids[j] = -100
+        sequence_labels = copy.deepcopy(input_ids[i])
 
-    breakpoint()
-    tokenized_sequences["labels"] = labels
+        for j in range(len(x_input_ids)):
+            sequence_labels[j] = -100
+
+        for j in range(len(sequence_labels) - 1, -1, -1):
+            if sequence_labels[j] == tokenizer.pad_token_id:
+                sequence_labels[j] = -100
+            else:
+                break  # Stop once we've updated all the pad tokens.
+
+        labels.append(sequence_labels.tolist())
+
+    tokenized_sequences["labels"] = torch.IntTensor(labels)
 
     return tokenized_sequences
 
@@ -373,7 +380,6 @@ def ft_gpt2(model, tok, x, y, mode, dataset, batch_size=8, grad_accum=8):
             optimizer.zero_grad()
 
         # END YOUR CODE
-
         if step % (grad_accum * 5) == 0:
             with torch.inference_mode():
                 model.eval()
