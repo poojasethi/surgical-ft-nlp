@@ -215,10 +215,15 @@ def run_icl(models: List[str], datasets_: List[str], ks: List[int], prompt_modes
                             #   https://huggingface.co/docs/transformers/v4.23.1/en/main_classes/tokenizer#transformers.PreTrainedTokenizer.__call__
                             # Note that the tokenizer by default will give you results on the CPU, so you will need to move them to the
                             # proper device.
-                            # YOUR CODE HERE
-
-                            decoded_prediction = ""
-
+                            k_shot_prompt = get_icl_prompts(
+                                support_inputs=support_x,
+                                support_labels=support_y,
+                                test_input=test_input,
+                                prompt_mode=prompt_mode,
+                            )
+                            inputs = tokenizer(k_shot_prompt, return_tensors="pt")
+                            sampled_tokens = do_sample(model, inputs["input_ids"], stop_tokens, max_tokens)
+                            decoded_prediction = tokenizer.decode(sampled_tokens)
                             # END YOUR CODE
 
                             predictions.append(decoded_prediction)
