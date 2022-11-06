@@ -87,7 +87,7 @@ def get_icl_prompts(
     elif prompt_mode == "custom":
         for i, l in support_examples:
             prompt += f"Article: {i} Summary: {l} "
-        prompt += f"{test_input} Summary:"
+        prompt += f"Article: {test_input} Summary:"
 
     return prompt
 
