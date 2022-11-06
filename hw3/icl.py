@@ -159,12 +159,12 @@ def do_sample(model, input_ids, stop_tokens, max_tokens):
             logits = outputs.logits[:, -1, :]
             next_token = logits.squeeze().argmax()
 
-            if next_token in stop_tokens_set:
+            if next_token.item() in stop_tokens_set:
                 # Stop decoding if we reach a stop token.
                 break
             else:
                 # Otherwise, update the sampled_tokens and the input_ids to include the next_token that we sampled.
-                sampled_tokens.append(next_token)
+                sampled_tokens.append(next_token.item())
                 input_ids = torch.cat((input_ids, next_token.view((1, 1))), dim=1)
 
     return sampled_tokens
