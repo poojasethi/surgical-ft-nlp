@@ -217,8 +217,6 @@ def ft_bert(model, tok, x, y, mode, batch_size=8):
         y_ = torch.tensor([y[i] for i in batch], device=DEVICE)
         logits = model(**x_).logits
         loss = get_loss(logits, y_)
-        model_loss = model(**x_).logits
-        breakpoint()
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -359,6 +357,20 @@ def ft_gpt2(model, tok, x, y, mode, dataset, batch_size=8, grad_accum=8):
         # Note: the ** operator will unpack a dictionary into keyword arguments to a function (such as your model)
 
         # YOUR CODE HERE
+        x_batch, y_batch = [x[i] for i in batch_idxs], [y[i] for i in batch_idxs]
+        tokens = tokenize_gpt2_batch(tok, x_batch, y_batch)
+        logits = model(**tokens, use_cache=False).logits
+        loss = get_loss(logits, y_batch)
+
+        # NOTE(pooja): Uncomment for debugging only.
+        model_loss = model(**tokens).loss
+
+        loss = loss / grad_accum
+        loss.backward()
+
+        if (step + 1) % grad_accum == 0:
+            optimizer.step()
+            optimizer.zero_grad()
 
         # END YOUR CODE
 
