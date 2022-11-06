@@ -62,35 +62,32 @@ def get_icl_prompts(
         Reference: https://stackoverflow.com/questions/4601373/better-way-to-shuffle-two-numpy-arrays-in-unison
         """
         assert len(inputs) == len(labels)
-        p = np.random.permutation(len(inputs))
-        return inputs[p], labels[p]
+
+        if len(inputs) == 0:
+            return inputs, labels
+
+        indices = np.random.permutation(len(inputs))
+        return [inputs[i] for i in indices], [labels[i] for i in indices]
 
     support_inputs_shuffled, support_labels_shuffled = shuffle_in_unison(support_inputs, support_labels)
     support_examples = zip(support_inputs_shuffled, support_labels_shuffled)
-    breakpoint()
 
     if prompt_mode == "qa":
         for i, l in support_examples:
             prompt += f"{i} In the {l}. "
         prompt += f"{test_input} In the"
-        breakpoint()
     elif prompt_mode == "none":
         for i, l in support_examples:
             prompt += f"{i} {l} "
         prompt += f"{test_input}"
-        breakpoint()
     elif prompt_mode == "tldr":
         for i, l in support_examples:
             prompt += f"{i} TL;DR: {l} "
         prompt += f"{test_input} TL;DR:"
-        breakpoint()
     elif prompt_mode == "custom":
         for i, l in support_examples:
             prompt += f"Article: {i} Summary: {l} "
         prompt += f"{test_input} Summary:"
-        breakpoint()
-
-    prompt += "<generate>"
 
     return prompt
 
@@ -153,15 +150,14 @@ def do_sample(model, input_ids, stop_tokens, max_tokens):
     stop_tokens_set = set(stop_tokens)
     next_token = None
 
-    greedy_output = model.generate(input_ids, max_length=(input_ids.shape[1] + max_tokens))
-    breakpoint()
+    # NOTE(pooja): For sanity-checking, we can compare our final sampled tokens to those returned by model.generate
+    # greedy_output = model.generate(input_ids, max_length=(input_ids.shape[1] + max_tokens))
 
     while len(sampled_tokens) < max_tokens:
         with torch.inference_mode():
             outputs = model(input_ids=input_ids, labels=input_ids)
             logits = outputs.logits[:, -1, :]
             next_token = logits.squeeze().argmax()
-            breakpoint()
 
             if next_token in stop_tokens_set:
                 # Stop decoding if we reach a stop token.
@@ -169,8 +165,7 @@ def do_sample(model, input_ids, stop_tokens, max_tokens):
             else:
                 # Otherwise, update the sampled_tokens and the input_ids to include the next_token that we sampled.
                 sampled_tokens.append(next_token)
-                input_ids.cat(next_token, dim=1)
-                breakpoint()
+                input_ids = torch.cat((input_ids, next_token.view((1, 1))), dim=1)
 
     return sampled_tokens
 
@@ -224,7 +219,6 @@ def run_icl(models: List[str], datasets_: List[str], ks: List[int], prompt_modes
                             inputs = tokenizer(k_shot_prompt, return_tensors="pt")
                             sampled_tokens = do_sample(model, inputs["input_ids"], stop_tokens, max_tokens)
                             decoded_prediction = tokenizer.decode(sampled_tokens)
-                            # END YOUR CODE
 
                             predictions.append(decoded_prediction)
                             metric = get_performance_metric(predictions, targets, utils.metric_for_dataset(dataset))
