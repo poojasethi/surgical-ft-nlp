@@ -360,6 +360,7 @@ def ft_gpt2(model, tok, x, y, mode, dataset, batch_size=8, grad_accum=8):
         # YOUR CODE HERE
         x_batch, y_batch = [x[i] for i in batch_idxs], [y[i] for i in batch_idxs]
         inputs = tokenize_gpt2_batch(tok, x_batch, y_batch)
+        inputs = inputs.to(DEVICE)
 
         # NOTE(pooja): We can compare the model loss to our loss for debugging purposes.
         # outputs = model(**inputs, use_cache=False)
