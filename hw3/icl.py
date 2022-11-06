@@ -67,23 +67,28 @@ def get_icl_prompts(
 
     support_inputs_shuffled, support_labels_shuffled = shuffle_in_unison(support_inputs, support_labels)
     support_examples = zip(support_inputs_shuffled, support_labels_shuffled)
+    breakpoint()
 
     if prompt_mode == "qa":
         for i, l in support_examples:
             prompt += f"{i} In the {l}. "
         prompt += f"{test_input} In the"
+        breakpoint()
     elif prompt_mode == "none":
         for i, l in support_examples:
             prompt += f"{i} {l} "
         prompt += f"{test_input}"
+        breakpoint()
     elif prompt_mode == "tldr":
         for i, l in support_examples:
             prompt += f"{i} TL;DR: {l} "
         prompt += f"{test_input} TL;DR:"
+        breakpoint()
     elif prompt_mode == "custom":
         for i, l in support_examples:
             prompt += f"Article: {i} Summary: {l} "
         prompt += f"{test_input} Summary:"
+        breakpoint()
 
     prompt += "<generate>"
 
@@ -145,6 +150,28 @@ def do_sample(model, input_ids, stop_tokens, max_tokens):
     """
     # YOUR CODE HERE
     sampled_tokens = []
+    stop_tokens_set = set(stop_tokens)
+    next_token = None
+
+    greedy_output = model.generate(input_ids, max_length=(input_ids.shape[1] + max_tokens))
+    breakpoint()
+
+    while len(sampled_tokens) < max_tokens:
+        with torch.inference_mode():
+            outputs = model(input_ids=input_ids, labels=input_ids)
+            logits = outputs.logits[:, -1, :]
+            next_token = logits.squeeze().argmax()
+            breakpoint()
+
+            if next_token in stop_tokens_set:
+                # Stop decoding if we reach a stop token.
+                break
+            else:
+                # Otherwise, update the sampled_tokens and the input_ids to include the next_token that we sampled.
+                sampled_tokens.append(next_token)
+                input_ids.cat(next_token, dim=1)
+                breakpoint()
+
     return sampled_tokens
 
 
