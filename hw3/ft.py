@@ -46,7 +46,13 @@ class LoRAConv1DWrapper(nn.Module):
         ### Initialization hint: what do the gradients look like after 1 and 2 steps of fine-tuning
         ###     if you initialize both A and B to zero? What about if just one is zero?
         ###
-        # YOUR CODE HERE
+        p = lora_rank
+        d1, d2 = self.base_module.weight.shape[0], self.base_module.weight.shape[1]
+        breakpoint()
+
+        self.A = nn.Linear(d1, p, bias=False)
+        self.B = nn.Linear(p, d2, bias=False)
+        nn.init.zeros_(self.B)
 
     def forward(self, x):
         ###
@@ -54,8 +60,9 @@ class LoRAConv1DWrapper(nn.Module):
         ### Note: you don't need to ever explicitly construct the matrix AB^T.
         ### Hint: matrix multiplication is associative.
         ###
-        # YOUR CODE HERE
-        pass
+        out = self.base_module(x) + self.B(self.A(x))
+        breakpoint()
+        return out
 
 
 def parameters_to_fine_tune(model: nn.Module, mode: str) -> List:
@@ -82,9 +89,16 @@ def parameters_to_fine_tune(model: nn.Module, mode: str) -> List:
         num_layers = model.config.num_hidden_layers
         mid_layer = (num_layers - 1) // 2
         return model.transformer.h[mid_layer : mid_layer + 1].parameters()
-
     elif mode.startswith("lora"):
-        pass
+        # Reference: https://github.com/pytorch/pytorch/issues/15067
+        params = []
+        for m in model.modules():
+            if isinstance(m, LoRAConv1DWrapper):
+                # Importantly, we only want to fine-tune the matrics A and B.
+                params.append(m.A.parameters())
+                params.append(m.B.parameters())
+        breakpoint()
+        return params
     else:
         raise NotImplementedError()
 
