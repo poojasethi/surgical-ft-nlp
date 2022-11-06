@@ -307,7 +307,7 @@ def tokenize_gpt2_batch(tokenizer, x, y):
 
         labels.append(sequence_labels.tolist())
 
-    tokenized_sequences["labels"] = torch.IntTensor(labels)
+    tokenized_sequences["labels"] = torch.LongTensor(labels)
 
     return tokenized_sequences
 
