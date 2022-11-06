@@ -48,11 +48,10 @@ class LoRAConv1DWrapper(nn.Module):
         ###
         p = lora_rank
         d1, d2 = self.base_module.weight.shape[0], self.base_module.weight.shape[1]
-        breakpoint()
 
         self.A = nn.Linear(d1, p, bias=False)
         self.B = nn.Linear(p, d2, bias=False)
-        nn.init.zeros_(self.B)
+        self.B.weight.data.zero_()
 
     def forward(self, x):
         ###
@@ -61,7 +60,6 @@ class LoRAConv1DWrapper(nn.Module):
         ### Hint: matrix multiplication is associative.
         ###
         out = self.base_module(x) + self.B(self.A(x))
-        breakpoint()
         return out
 
 
@@ -95,9 +93,8 @@ def parameters_to_fine_tune(model: nn.Module, mode: str) -> List:
         for m in model.modules():
             if isinstance(m, LoRAConv1DWrapper):
                 # Importantly, we only want to fine-tune the matrics A and B.
-                params.append(m.A.parameters())
-                params.append(m.B.parameters())
-        breakpoint()
+                params.append(m.A.weight)
+                params.append(m.B.weight)
         return params
     else:
         raise NotImplementedError()
@@ -130,15 +127,16 @@ def get_loss(logits: torch.tensor, targets: torch.tensor) -> torch.tensor:
     if logits.dim() == 2:
         return F.cross_entropy(logits, targets)
     elif logits.dim() == 3:
-        # Reference: https://github.com/huggingface/transformers/blob/v4.24.0/src/transformers/models/gpt2/modeling_gpt2.py#L945
+        # Reference: https://github.com/huggingface/transformers/blob/v4.24.0/src/transformers/models/gpt2/modeling_gpt2.py#L1070-L1077
+
         # Align the logits and the targets
-        shifted_logits = logits[:, :-1, :].contiguous()  # We ignore the logit corresponding to the last token
-        shifted_targets = targets[:, 1:].contiguous()  # We only consider the targets starting from t=1
+        shifted_logits = logits[..., :-1, :].contiguous()  # We ignore the logit corresponding to the last token
+        shifted_targets = targets[..., 1:].contiguous()  # We only consider the targets starting from t=1
 
         # The default value for ignore_index is -100, but we can also explicitly set it here.
-        return F.cross_entropy(
-            shifted_logits.view(-1, shifted_logits.size(-1)), shifted_targets.view(-1), ignore_index=-100
-        )
+        loss_fct = nn.CrossEntropyLoss()
+        return loss_fct(shifted_logits.view(-1, shifted_logits.size(-1)), shifted_targets.view(-1))
+
     else:
         raise ValueError(
             f"Logits should either be 2-dim (for classification) or 3-dim (for generation); got {logits.dim()}"
@@ -176,21 +174,17 @@ def get_acc(logits, targets):
         return accuracy.item()
     elif logits.dim() == 3:
         # Align the logits and the targets
-        shifted_logits = logits[:, :-1, :].contiguous()  # We ignore the logit corresponding to the last token
-        shifted_targets = targets[:, 1:].contiguous()  # We only consider the targets starting from t=1
+        shifted_logits = logits[..., :-1, :].contiguous()  # We ignore the logit corresponding to the last token
+        shifted_targets = targets[..., 1:].contiguous()  # We only consider the targets starting from t=1
 
         predictions = shifted_logits.argmax(dim=2).squeeze()
 
         # Don't include targets that are equal to -100 in the accuracy.
-        correct_predictions = (predictions == shifted_targets).float() - (shifted_targets == -100)
-        accuracy = correct_predictions.sum() / (len(correct_predictions) - len((shifted_targets == -100).view(-1)))
-        breakpoint()
-        return accuracy.item()
+        valid_targets = shifted_targets != -100
+        correct_predictions = ((predictions == shifted_targets) & valid_targets).float()
+        accuracy = correct_predictions.sum().item() / valid_targets.sum().item()
 
-        # The default value for ignore_index is -100, but we can also explicitly set it here.
-        return F.cross_entropy(
-            shifted_logits.view(-1, shifted_logits.size(-1)), shifted_targets.view(-1), ignore_index=-100
-        )
+        return accuracy
     else:
         raise ValueError(
             f"Logits should either be 2-dim (for classification) or 3-dim (for generation); got {logits.dim()}"
@@ -365,12 +359,15 @@ def ft_gpt2(model, tok, x, y, mode, dataset, batch_size=8, grad_accum=8):
 
         # YOUR CODE HERE
         x_batch, y_batch = [x[i] for i in batch_idxs], [y[i] for i in batch_idxs]
-        tokens = tokenize_gpt2_batch(tok, x_batch, y_batch)
-        logits = model(**tokens, use_cache=False).logits
-        loss = get_loss(logits, y_batch)
+        inputs = tokenize_gpt2_batch(tok, x_batch, y_batch)
 
-        # NOTE(pooja): Uncomment for debugging only.
-        model_loss = model(**tokens).loss
+        # NOTE(pooja): We can compare the model loss to our loss for debugging purposes.
+        # outputs = model(**inputs, use_cache=False)
+        # model_loss = outputs.loss
+        # logits = outputs.logits
+
+        logits = model(**inputs, use_cache=False).logits
+        loss = get_loss(logits, inputs["labels"])
 
         loss = loss / grad_accum
         loss.backward()
