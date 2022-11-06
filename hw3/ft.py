@@ -75,11 +75,14 @@ def parameters_to_fine_tune(model: nn.Module, mode: str) -> List:
     if mode == "all":
         return model.parameters()
     elif mode == "last":
-        pass
+        return model.transformer.h[-2:].parameters()
     elif mode == "first":
-        pass
+        return model.transformer.h[:2].parameters()
     elif mode == "middle":
-        pass
+        num_layers = model.config.num_hidden_layers
+        mid_layer = (num_layers - 1) // 2
+        return model.transformer.h[mid_layer : mid_layer + 1].parameters()
+
     elif mode.startswith("lora"):
         pass
     else:
