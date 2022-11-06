@@ -155,8 +155,7 @@ def do_sample(model, input_ids, stop_tokens, max_tokens):
 
     while len(sampled_tokens) < max_tokens:
         with torch.inference_mode():
-            outputs = model(input_ids=input_ids, labels=input_ids)
-            logits = outputs.logits[:, -1, :]
+            logits = model(input_ids=input_ids, labels=input_ids).logits[:, -1, :]
             next_token = logits.squeeze().argmax()
 
             if next_token.item() in stop_tokens_set:
