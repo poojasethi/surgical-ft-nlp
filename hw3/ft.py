@@ -335,6 +335,11 @@ def ft_gpt2(model, tok, x, y, mode, dataset, batch_size=8, grad_accum=8):
     max_n = len(x) * 10
     pbar = tqdm.tqdm(range(max_n))
     idxs = []
+
+    # NOTE(pooja): This seems to be necessary in order to check accuracy on Azure.
+    for k, v in all_both.items():
+        all_both[k] = v.to(DEVICE)
+
     for step in pbar:
         model.train()
 
@@ -368,6 +373,8 @@ def ft_gpt2(model, tok, x, y, mode, dataset, batch_size=8, grad_accum=8):
         # logits = outputs.logits
 
         logits = model(**inputs, use_cache=False).logits
+        logits = logits.to(DEVICE)
+
         loss = get_loss(logits, inputs["labels"])
 
         loss = loss / grad_accum
