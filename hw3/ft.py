@@ -130,7 +130,15 @@ def get_loss(logits: torch.tensor, targets: torch.tensor) -> torch.tensor:
     if logits.dim() == 2:
         return F.cross_entropy(logits, targets)
     elif logits.dim() == 3:
-        pass
+        # Reference: https://github.com/huggingface/transformers/blob/v4.24.0/src/transformers/models/gpt2/modeling_gpt2.py#L945
+        # Align the logits and the targets
+        shifted_logits = logits[:, :-1, :].contiguous()  # We ignore the logit corresponding to the last token
+        shifted_targets = targets[:, 1:].contiguous()  # We only consider the targets starting from t=1
+
+        # The default value for ignore_index is -100, but we can also explicitly set it here.
+        return F.cross_entropy(
+            shifted_logits.view(-1, shifted_logits.size(-1)), shifted_targets.view(-1), ignore_index=-100
+        )
     else:
         raise ValueError(
             f"Logits should either be 2-dim (for classification) or 3-dim (for generation); got {logits.dim()}"
@@ -167,7 +175,22 @@ def get_acc(logits, targets):
         accuracy = correct_predictions.sum() / len(correct_predictions)
         return accuracy.item()
     elif logits.dim() == 3:
-        pass
+        # Align the logits and the targets
+        shifted_logits = logits[:, :-1, :].contiguous()  # We ignore the logit corresponding to the last token
+        shifted_targets = targets[:, 1:].contiguous()  # We only consider the targets starting from t=1
+
+        predictions = shifted_logits.argmax(dim=2).squeeze()
+
+        # Don't include targets that are equal to -100 in the accuracy.
+        correct_predictions = (predictions == shifted_targets).float() - (shifted_targets == -100)
+        accuracy = correct_predictions.sum() / (len(correct_predictions) - len((shifted_targets == -100).view(-1)))
+        breakpoint()
+        return accuracy.item()
+
+        # The default value for ignore_index is -100, but we can also explicitly set it here.
+        return F.cross_entropy(
+            shifted_logits.view(-1, shifted_logits.size(-1)), shifted_targets.view(-1), ignore_index=-100
+        )
     else:
         raise ValueError(
             f"Logits should either be 2-dim (for classification) or 3-dim (for generation); got {logits.dim()}"
@@ -194,6 +217,8 @@ def ft_bert(model, tok, x, y, mode, batch_size=8):
         y_ = torch.tensor([y[i] for i in batch], device=DEVICE)
         logits = model(**x_).logits
         loss = get_loss(logits, y_)
+        model_loss = model(**x_).logits
+        breakpoint()
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -262,7 +287,23 @@ def tokenize_gpt2_batch(tokenizer, x, y):
             returned by the tokenizer without creating a new dictionary.
     """
     # YOUR CODE HERE
-    tokenized_sequences = None
+    sequences = [x_ + y_ for x_, y_ in zip(x, y)]
+    max_length = max([len(s) for s in sequences])
+
+    tokenized_sequences = tokenizer(return_tensors="pt", padding=True, max_length=max_length)
+
+    # Construct the labels by masking out the input_ids corresponding to the prompts.
+    input_ids = tokenized_sequences["input_ids"]
+    labels = []
+    for i, sequence in enumerate(sequences):
+        x_input_ids = tokenizer(x[i])["input_ids"]
+        sequence_input_ids = input_ids[i]
+        for j in range(len(x_input_ids)):
+            sequence_input_ids[j] = -100
+
+    breakpoint()
+    tokenized_sequences["labels"] = labels
+
     return tokenized_sequences
 
 
