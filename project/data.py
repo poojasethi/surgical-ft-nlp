@@ -4,8 +4,20 @@ import pandas as pd
 import logging
 from transformers import BertTokenizer
 from torch.utils.data import TensorDataset, random_split
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
 logger = logging.getLogger(__name__)
+
+
+def get_train_dataloader(train_dataset: TensorDataset, batch_size: int = 32) -> DataLoader:
+    return DataLoader(train_dataset, sampler=RandomSampler(train_dataset), batch_size=batch_size)
+
+
+def get_test_dataloader(test_dataset: TensorDataset, batch_size: int = 32) -> DataLoader:
+    """
+    Return a DataLoader to use for validation or testing.
+    """
+    return DataLoader(test_dataset, sampler=SequentialSampler(test_dataset), batch_size=batch_size)
 
 
 def get_dataset(dataset: str):
