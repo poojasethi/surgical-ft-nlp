@@ -1,8 +1,7 @@
-from transformers import (AdamW, BertConfig, BertForSequenceClassification,
-                          BertForTokenClassification)
+from transformers import BertForSequenceClassification, BertForTokenClassification, AdamW, BertConfig
 
 
-def get_model(model_type: str, num_labels: int = 2):
+def get_model(model_type: str, num_labels: int):
     model = None
 
     if model_type == "sequence":
@@ -42,6 +41,8 @@ def get_tunable_parameters(model, option="all"):
         parameters.extend(model.bert.encoder.layer[8:12].parameters())
 
     if type(model) == BertForSequenceClassification:
+        parameters.extend(model.classifier.parameters())
+    if type(model) == BertForTokenClassification:
         parameters.extend(model.classifier.parameters())
     else:
         raise NotImplementedError(f"Unknown model type {type(model)}")

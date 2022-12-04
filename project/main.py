@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from transformers import AdamW, get_linear_schedule_with_warmup
 
-from data import get_datasets, get_test_dataloader, get_train_dataloader
+from data import get_datasets, get_num_labels, get_test_dataloader, get_train_dataloader
 from model import get_model, get_tunable_parameters
 from utils import flat_accuracy, format_time
 
@@ -23,7 +23,9 @@ CS 330 meta-learning project: Surgical fine-tuning of the classical NLP pipeline
 References:
 -----------
 [1] BERT Fine-tuning Tutorial with PyTorch: http://mccormickml.com/2019/07/22/BERT-fine-tuning/
-[2] CoLA Public: https://nyu-mll.github.io/CoLA/
+[2] Fine-tuning BERT for named-entity-recognition: https://github.com/NielsRogge/Transformers-Tutorials/blob/master/BERT/Custom_Named_Entity_Recognition_with_BERT.ipynb
+[3] CoLA Public: https://nyu-mll.github.io/CoLA/
+[4] CoNLL-2003: https://huggingface.co/datasets/conll2003
 """
 
 seed = 42
@@ -35,7 +37,7 @@ torch.cuda.manual_seed_all(seed)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("-m", "--model-type", required=True, choices=["sequence", "document"])
+    parser.add_argument("-m", "--model-type", required=True, choices=["sequence", "token"])
     parser.add_argument("-d", "--dataset", required=True, choices=["glue-cola", "glue-sst", "conll-pos", "conll-ner"])
 
     parser.add_argument(
@@ -56,9 +58,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace):
-    model = get_model(args.model_type)
+    num_labels = get_num_labels(args.dataset)
+    model = get_model(args.model_type, num_labels)
 
-    train_dataset, val_dataset = get_datasets(args.dataset)
+    train_dataset, val_dataset, test_dataset = get_datasets(args.dataset)
     train_dataloader = get_train_dataloader(train_dataset)
     validation_dataloader = get_test_dataloader(val_dataset)
 
@@ -165,7 +168,6 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
     # Tracking variables
     total_eval_accuracy = 0
     total_eval_loss = 0
-    nb_eval_steps = 0
 
     for batch in validation_dataloader:
         b_input_ids = batch[0].to(device)

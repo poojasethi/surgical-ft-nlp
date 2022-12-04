@@ -1,13 +1,21 @@
 import logging
-from typing import Tuple
+from typing import Tuple, List, Optional
 
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Subset, Dataset, RandomSampler, SequentialSampler, TensorDataset, random_split
 from transformers import BertTokenizer
+from datasets import load_dataset
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Label to assign to special tokens, i.e. [CLS] and [SEP].
+SPECIAL_TOKEN_LABEL = -100
+
+# Maximum sequence length of BERT model
+MAX_BERT_LENGTH = 512
 
 
 def get_train_dataloader(train_dataset: Subset, batch_size: int = 32) -> DataLoader:
@@ -21,7 +29,36 @@ def get_test_dataloader(test_dataset: Subset, batch_size: int = 32) -> DataLoade
     return DataLoader(test_dataset, sampler=SequentialSampler(test_dataset), batch_size=batch_size)
 
 
-def get_datasets(dataset: str) -> Tuple[Dataset, Dataset]:
+def get_num_labels(dataset: str) -> int:
+    """
+    Returns the number of labels in the given dataset (plus one to account for special tokens).
+    Ideally, this would be inferred from the dataset, but for convenience, we hardcode the number of labels here.
+    """
+    if dataset == "glue-cola":
+        return 2
+    elif dataset == "glue-sst":
+        raise NotImplementedError()
+    elif dataset == "conll-ner":
+        return 47 + 1
+    elif dataset == "conll-pos":
+        return 9 + 1
+    else:
+        raise ValueError(f"Unsupported dataset {dataset}")
+
+
+def get_max_length(sentences: List[str], tokenizer) -> int:
+    max_len = 0
+
+    for sent in sentences:
+        # Add `[CLS]` and `[SEP]` tokens
+        input_ids = tokenizer.encode(sent, add_special_tokens=True)
+        max_len = max(max_len, len(input_ids))
+
+    logger.info("Max sentence length: ", max_len)
+    return max_len
+
+
+def get_datasets(dataset: str) -> Tuple[Subset, Subset, Optional[Subset]]:
     if dataset == "glue-cola":
         # Load the dataset into a pandas dataframe.
         df = pd.read_csv(
@@ -43,22 +80,7 @@ def get_datasets(dataset: str) -> Tuple[Dataset, Dataset]:
         logger.info("Loading BERT tokenizer")
         tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
 
-        def get_max_length():
-            max_len = 0
-
-            for sent in sentences:
-                # Add `[CLS]` and `[SEP]` tokens
-                input_ids = tokenizer.encode(sent, add_special_tokens=True)
-                max_len = max(max_len, len(input_ids))
-
-            logger.info("Max sentence length: ", max_len)
-            return max_len
-
-        max_len = get_max_length()
-
-        # Load the BERT tokenizer.
-        print("Loading BERT tokenizer...")
-        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+        max_len = get_max_length(sentences, tokenizer)
 
         # TODO(pooja): Process the sentences in a batch rather than one-by-one.
         input_ids = []
@@ -86,13 +108,90 @@ def get_datasets(dataset: str) -> Tuple[Dataset, Dataset]:
         val_size = len(tensor_dataset) - train_size
 
         train_dataset, val_dataset = random_split(tensor_dataset, [train_size, val_size])
-        return train_dataset, val_dataset
+        return train_dataset, val_dataset, None
 
     elif dataset == "glue-sst":
         raise NotImplementedError()
     elif dataset == "conll-pos":
-        raise NotImplementedError()
+        datasets = load_dataset("conll2003")
+
+        train_dataset = datasets["train"]
+        validation_dataset = datasets["validation"]
+        test_dataset = datasets["test"]
+
+        logger.info("Loading BERT tokenizer")
+        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+
+        train_dataset, validation_dataset, test_dataset = (
+            create_token_level_dataset(train_dataset, "pos_tags", tokenizer),
+            create_token_level_dataset(validation_dataset, "pos_tags", tokenizer),
+            create_token_level_dataset(test_dataset, "pos_tags", tokenizer),
+        )
+        return train_dataset, validation_dataset, test_dataset
+
     elif dataset == "conll-ner":
-        raise NotImplementedError()
+        datasets = load_dataset("conll2003")
+
+        train_dataset = datasets["train"]
+        validation_dataset = datasets["validation"]
+        test_dataset = datasets["test"]
+
+        logger.info("Loading BERT tokenizer")
+        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+
+        train_dataset, validation_dataset, test_dataset = (
+            create_token_level_dataset(train_dataset, "ner_tags", tokenizer),
+            create_token_level_dataset(validation_dataset, "ner_tags", tokenizer),
+            create_token_level_dataset(test_dataset, "ner_tags", tokenizer),
+        )
+
+        return train_dataset, validation_dataset, test_dataset
     else:
         raise ValueError(f"Unrecognized dataset {dataset}")
+
+
+# Reference: https://discuss.huggingface.co/t/how-to-deal-with-differences-between-conll-2003-dataset-tokenisation-and-ber-tokeniser-when-fine-tuning-ner-model/11129/2
+def create_token_level_dataset(dataset: Dataset, label_type: str, tokenizer: BertTokenizer) -> TensorDataset:
+    # Extract tokens and attention_masks
+    all_words = dataset["tokens"]
+    all_word_labels = dataset[label_type]
+
+    input_ids = []
+    attention_masks = []
+    labels = []
+
+    # We need to re-tokenize the input to match the BertTokenizer.
+    for words, word_labels in zip(all_words, all_word_labels):
+        inputs = tokenizer.encode_plus(
+            " ".join(words),
+            add_special_tokens=True,
+            max_length=MAX_BERT_LENGTH,
+            truncation=True,
+            padding="max_length",
+            return_attention_mask=True,
+            return_tensors="pt",
+        )
+        input_ids.append(inputs["input_ids"])
+        attention_masks.append(inputs["attention_mask"])
+
+        # Update the labels to match our new tokens
+        token_labels = []
+        tokens = []
+        for word, label in zip(words, word_labels):
+            word_tokens = tokenizer.tokenize(word)
+            tokens.extend(word_tokens)
+            token_labels.extend([label] * len(word_tokens))
+
+        # Also make sure to add labels for the special tokens and any additional padding.
+        num_padding_tokens = MAX_BERT_LENGTH - min(len(token_labels) + 2, MAX_BERT_LENGTH)
+        padding_labels = [SPECIAL_TOKEN_LABEL] * num_padding_tokens if num_padding_tokens > 0 else []
+        token_labels_with_special = [SPECIAL_TOKEN_LABEL] + token_labels + [SPECIAL_TOKEN_LABEL] + padding_labels
+        labels.append(torch.LongTensor(token_labels_with_special)[None, :])
+
+    input_ids = torch.cat(input_ids, dim=0)
+    attention_masks = torch.cat(attention_masks, dim=0)
+    labels = torch.cat(labels, dim=0)
+
+    tensor_dataset = TensorDataset(input_ids, attention_masks, labels)
+
+    return tensor_dataset
