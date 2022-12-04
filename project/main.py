@@ -2,6 +2,9 @@ import argparse
 import logging
 import random
 import time
+import os
+import pickle
+from typing import List, Dict, Any
 
 import numpy as np
 import torch
@@ -232,10 +235,32 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
             "Validation Time": validation_time,
         }
     )
-
     logger.info("")
     logger.info("Training complete!")
     logger.info("Total training took {:} (h:mm:ss)".format(format_time(time.time() - total_t0)))
+
+    save_model(model, args.dataset, args.parameter_group, training_stats)
+
+
+def save_model(model, dataset: str, parameter_group: str, training_stats: List[Dict[str, Any]]):
+    output_dir = f"models/{dataset}/{parameter_group}/"
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    logger.info(f"Saving model to {output_dir}")
+
+    # Save trained model
+    # Can be reloaded using from_pretrained()
+    model_to_save = model.module if hasattr(model, "module") else model  # Take care of distributed/parallel training
+    model_to_save.save_pretrained(output_dir)
+
+    with open(os.path.join(output_dir, "training_stats.pickle"), "wb") as fh:
+        pickle.dump(training_stats, fh, protocol=pickle.HIGHEST_PROTOCOL)
+
+    with open(os.path.join(output_dir, "training_stats.txt"), "w") as fh:
+        training_stats_text = [str(stat) for stat in training_stats]
+        fh.write("\n".join(training_stats_text))
 
 
 if __name__ == "__main__":
