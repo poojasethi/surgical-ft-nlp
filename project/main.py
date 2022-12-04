@@ -127,11 +127,6 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
 
             loss = result.loss
             logits = result.logits
-
-            # Accumulate the training loss over all of the batches so that we can
-            # calculate the average loss at the end. `loss` is a Tensor containing a
-            # single value; the `.item()` function just returns the Python value
-            # from the tensor.
             total_train_loss += loss.item()
 
             # Perform a backward pass to calculate the gradients.
@@ -140,14 +135,8 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
             # Clip the norm of the gradients to 1.0.
             # This is to help prevent the "exploding gradients" problem.
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-
-            # Update parameters and take a step using the computed gradient.
-            # The optimizer dictates the "update rule"--how the parameters are
-            # modified based on their gradients, the learning rate, etc.
-            optimizer.step()
-
-            # Update the learning rate.
-            scheduler.step()
+            optimizer.step()  # Update model parameters
+            scheduler.step()  # Update the learning rate
 
     # Calculate the average loss over all of the batches.
     avg_train_loss = total_train_loss / len(train_dataloader)
@@ -239,7 +228,7 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
     logger.info("Training complete!")
     logger.info("Total training took {:} (h:mm:ss)".format(format_time(time.time() - total_t0)))
 
-    save_model(model, args.dataset, args.parameter_group, training_stats)
+    save_model(model, args.dataset, args.tunable_parameters, training_stats)
 
 
 def save_model(model, dataset: str, parameter_group: str, training_stats: List[Dict[str, Any]]):
