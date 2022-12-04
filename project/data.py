@@ -39,9 +39,9 @@ def get_num_labels(dataset: str) -> int:
     elif dataset == "glue-sst":
         raise NotImplementedError()
     elif dataset == "conll-ner":
-        return 47 + 1
-    elif dataset == "conll-pos":
         return 9 + 1
+    elif dataset == "conll-pos":
+        return 47 + 1
     else:
         raise ValueError(f"Unsupported dataset {dataset}")
 
