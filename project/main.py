@@ -1,16 +1,18 @@
 import argparse
-import torch
-import wget
-import os
-import pandas as pd
-from torch.utils.data import TensorDataset, random_split
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
-from transformers import get_linear_schedule_with_warmup
-import numpy as np
-import time
+import logging
 import random
+import time
 
+import numpy as np
+import torch
+from transformers import AdamW, get_linear_schedule_with_warmup
+
+from data import get_datasets, get_test_dataloader, get_train_dataloader
 from model import get_model, get_tunable_parameters
+from utils import flat_accuracy, format_time
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 """
 CS 330 meta-learning project: Surgical fine-tuning of the classical NLP pipeline.
@@ -18,6 +20,7 @@ CS 330 meta-learning project: Surgical fine-tuning of the classical NLP pipeline
 References:
 -----------
 [1] BERT Fine-tuning Tutorial with PyTorch: http://mccormickml.com/2019/07/22/BERT-fine-tuning/
+[2] CoLA Public: https://nyu-mll.github.io/CoLA/
 """
 
 seed = 42
@@ -26,7 +29,8 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
-def parse_args() -> argparse.Namespace():
+
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model-type", required=True, choices=["sequence", "document"])
     parser.add_argument("-d", "--dataset", required=True, choices=["glue-cola", "glue-sst", "conll-pos", "conll-ner"])
@@ -37,52 +41,44 @@ def parse_args() -> argparse.Namespace():
         required=True,
         choices=["all", "group_1", "group_2", "group_3", "group_4", "group_5"],
     )
-    parser.add_argument(
-        "--lr",
-        type=float,
-        default=2e-5
-    )
-    parser.add_argument(
-        "--eps",
-        type=float,
-        help="Epsilon value for Adam",
-        default=1e-8
-    )
+    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--eps", type=float, help="Epsilon value for Adam", default=1e-8)
     parser.add_argument(
         "--epochs",
         type=int,
-        help="The number of epochs to run fine-tuning for. The BERT authors recommend between [2, 4]."
-        default=4
+        help="The number of epochs to run fine-tuning for. The BERT authors recommend between [2, 4].",
+        default=4,
     )
     return parser.parse_args()
 
-def main():
-    args = parse_args()
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+def main(args: argparse.Namespace):
     model = get_model(args.model_type)
-    model.to(device)
-    train_dataloader, validation_dataloader, test_dataloader = get_dataloaders(args.dataset)
+
+    train_dataset, val_dataset = get_datasets(args.dataset)
+    train_dataloader = get_train_dataloader(train_dataset)
+    validation_dataloader = get_test_dataloader(val_dataset)
+
     train(model, train_dataloader, validation_dataloader, args.lr, args.eps, args.tunable_parameters, args.epochs)
 
+
 def train(model, train_dataloader, validation_dataloader, lr: float, eps: float, tunable_parameters: str, epochs: int):
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     optimizer = AdamW(
         get_tunable_parameters(model, tunable_parameters),
         lr=lr,
         eps=eps,
     )
+    model.to(device)
 
     # Total number of training steps is [number of batches] x [number of epochs].
     # (Note that this is not the same as the number of training samples).
     total_steps = len(train_dataloader) * epochs
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=0, num_training_steps=total_steps
-    )
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
     tunable_parameters = get_tunable_parameters(model, option="None")
 
-
     training_stats = []
-
     # Measure the total training time for the whole run.
     total_t0 = time.time()
 
@@ -91,20 +87,20 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
         # ========================================
         #               Training
         # ========================================
-
         # Perform one full pass over the training set.
-        print("")
-        print("======== Epoch {:} / {:} ========".format(epoch_i + 1, epochs))
-        print("Training...")
+        logger.info("")
+        logger.info("======== Epoch {:} / {:} ========".format(epoch_i + 1, epochs))
+        logger.info("Training...")
 
         # Measure how long the training epoch takes.
         t0 = time.time()
 
         # Reset the total loss for this epoch.
-        total_train_loss = 0
+        total_train_loss = 0.0
 
-        # `Dropout` and `BatchNorm` layers behave differently during training
-        # vs. test (source: https://stackoverflow.com/questions/51433378/what-does-model-train-do-in-pytorch)
+        # Dropout and BatchNorm layers behave differently during training
+        # vs. test.
+        # https://stackoverflow.com/questions/51433378/what-does-model-train-do-in-pytorch)
         model.train()
 
         # For each batch of training data...
@@ -114,25 +110,17 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
                 # Calculate elapsed time in minutes.
                 elapsed = format_time(time.time() - t0)
 
-                # Report progress.
-                print("  Batch {:>5,}  of  {:>5,}.    Elapsed: {:}.".format(step, len(train_dataloader), elapsed))
+                logger.info("  Batch {:>5,}  of  {:>5,}.    Elapsed: {:}.".format(step, len(train_dataloader), elapsed))
 
-            # Unpack this training batch from our dataloader.
-            #
-            # As we unpack the batch, we'll also copy each tensor to the GPU using the
-            # `to` method.
-            #
-            # `batch` contains three pytorch tensors:
-            #   [0]: input ids
-            #   [1]: attention masks
-            #   [2]: labels
             b_input_ids = batch[0].to(device)
             b_input_mask = batch[1].to(device)
             b_labels = batch[2].to(device)
 
             model.zero_grad()
 
-            result = model(b_input_ids, token_type_ids=None, attention_mask=b_input_mask, labels=b_labels, return_dict=True)
+            result = model(
+                b_input_ids, token_type_ids=None, attention_mask=b_input_mask, labels=b_labels, return_dict=True
+            )
 
             loss = result.loss
             logits = result.logits
@@ -164,18 +152,17 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
     # Measure how long this epoch took.
     training_time = format_time(time.time() - t0)
 
-    print("")
-    print("  Average training loss: {0:.2f}".format(avg_train_loss))
-    print("  Training epcoh took: {:}".format(training_time))
-
+    logger.info("")
+    logger.info("  Average training loss: {0:.2f}".format(avg_train_loss))
+    logger.info("  Training epcoh took: {:}".format(training_time))
     # ========================================
     #               Validation
     # ========================================
     # After the completion of each training epoch, measure our performance on
     # our validation set.
 
-    print("")
-    print("Running Validation...")
+    logger.info("")
+    logger.info("Running Validation...")
 
     t0 = time.time()
 
@@ -188,17 +175,7 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
     total_eval_loss = 0
     nb_eval_steps = 0
 
-    # Evaluate data for one epoch
     for batch in validation_dataloader:
-        # Unpack this training batch from our dataloader.
-        #
-        # As we unpack the batch, we'll also copy each tensor to the GPU using
-        # the `to` method.
-        #
-        # `batch` contains three pytorch tensors:
-        #   [0]: input ids
-        #   [1]: attention masks
-        #   [2]: labels
         b_input_ids = batch[0].to(device)
         b_input_mask = batch[1].to(device)
         b_labels = batch[2].to(device)
@@ -233,7 +210,7 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
 
     # Report the final accuracy for this validation run.
     avg_val_accuracy = total_eval_accuracy / len(validation_dataloader)
-    print("  Accuracy: {0:.2f}".format(avg_val_accuracy))
+    logger.info("  Accuracy: {0:.2f}".format(avg_val_accuracy))
 
     # Calculate the average loss over all of the batches.
     avg_val_loss = total_eval_loss / len(validation_dataloader)
@@ -241,8 +218,8 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
     # Measure how long the validation run took.
     validation_time = format_time(time.time() - t0)
 
-    print("  Validation Loss: {0:.2f}".format(avg_val_loss))
-    print("  Validation took: {:}".format(validation_time))
+    logger.info("  Validation Loss: {0:.2f}".format(avg_val_loss))
+    logger.info("  Validation took: {:}".format(validation_time))
 
     # Record all statistics from this epoch.
     training_stats.append(
@@ -256,44 +233,11 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
         }
     )
 
-    # Display floats with two decimal places.
-    pd.set_option("precision", 2)
-
-    # Create a DataFrame from our training statistics.
-    df_stats = pd.DataFrame(data=training_stats)
-
-    # Use the 'epoch' as the row index.
-    df_stats = df_stats.set_index("epoch")
-
-    # A hack to force the column headers to wrap.
-    df = df.style.set_table_styles([dict(selector="th", props=[("max-width", "70px")])])
-
-    # Use plot styling from seaborn.
-    sns.set(style="darkgrid")
-
-    # Increase the plot size and font size.
-    sns.set(font_scale=1.5)
-    plt.rcParams["figure.figsize"] = (12, 6)
-
-    # Plot the learning curve.
-    plt.plot(df_stats["Training Loss"], "b-o", label="Training")
-    plt.plot(df_stats["Valid. Loss"], "g-o", label="Validation")
-
-    # Label the plot.
-    plt.title("Training & Validation Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.xticks([1, 2, 3, 4])
-
-    plt.show()
-
-
-print("")
-print("Training complete!")
-
-print("Total training took {:} (h:mm:ss)".format(format_time(time.time() - total_t0)))
+    logger.info("")
+    logger.info("Training complete!")
+    logger.info("Total training took {:} (h:mm:ss)".format(format_time(time.time() - total_t0)))
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args)

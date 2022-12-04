@@ -1,26 +1,27 @@
-import torch
+import logging
+from typing import Tuple
 
 import pandas as pd
-import logging
+import torch
+from torch.utils.data import DataLoader, Subset, Dataset, RandomSampler, SequentialSampler, TensorDataset, random_split
 from transformers import BertTokenizer
-from torch.utils.data import TensorDataset, random_split
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def get_train_dataloader(train_dataset: TensorDataset, batch_size: int = 32) -> DataLoader:
+def get_train_dataloader(train_dataset: Subset, batch_size: int = 32) -> DataLoader:
     return DataLoader(train_dataset, sampler=RandomSampler(train_dataset), batch_size=batch_size)
 
 
-def get_test_dataloader(test_dataset: TensorDataset, batch_size: int = 32) -> DataLoader:
+def get_test_dataloader(test_dataset: Subset, batch_size: int = 32) -> DataLoader:
     """
     Return a DataLoader to use for validation or testing.
     """
     return DataLoader(test_dataset, sampler=SequentialSampler(test_dataset), batch_size=batch_size)
 
 
-def get_dataset(dataset: str):
+def get_datasets(dataset: str) -> Tuple[Dataset, Dataset]:
     if dataset == "glue-cola":
         # Load the dataset into a pandas dataframe.
         df = pd.read_csv(
@@ -51,6 +52,7 @@ def get_dataset(dataset: str):
                 max_len = max(max_len, len(input_ids))
 
             logger.info("Max sentence length: ", max_len)
+            return max_len
 
         max_len = get_max_length()
 
@@ -68,7 +70,8 @@ def get_dataset(dataset: str):
                 add_special_tokens=True,
                 max_length=max_len,
                 pad_to_max_length=True,
-                return_tensor="pt",
+                return_attention_mask=True,
+                return_tensors="pt",
             )
             input_ids.append(inputs["input_ids"])
             attention_masks.append(inputs["attention_mask"])
@@ -76,14 +79,13 @@ def get_dataset(dataset: str):
         input_ids = torch.cat(input_ids, dim=0)
         attention_masks = torch.cat(attention_masks, dim=0)
         labels = torch.tensor(labels)
-
         tensor_dataset = TensorDataset(input_ids, attention_masks, labels)
 
         # Create a 90-10 train-validation split.
         train_size = int(0.9 * len(tensor_dataset))
         val_size = len(tensor_dataset) - train_size
-        train_dataset, val_dataset = random_split(tensor_dataset, [train_size, val_size])
 
+        train_dataset, val_dataset = random_split(tensor_dataset, [train_size, val_size])
         return train_dataset, val_dataset
 
     elif dataset == "glue-sst":

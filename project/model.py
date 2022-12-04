@@ -1,4 +1,5 @@
-from transformers import BertForSequenceClassification, BertForTokenClassification, AdamW, BertConfig
+from transformers import (AdamW, BertConfig, BertForSequenceClassification,
+                          BertForTokenClassification)
 
 
 def get_model(model_type: str, num_labels: int = 2):

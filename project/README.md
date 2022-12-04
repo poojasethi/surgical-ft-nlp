@@ -1,6 +1,8 @@
 # Environment Setup
 
 # Training models
+# Example usage:
+python main.py -m sequence -d glue-cola -p group_1
 
 # Datasets
 CoLA (Corpus of Linguistic Acceptability)
