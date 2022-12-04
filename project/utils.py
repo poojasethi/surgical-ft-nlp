@@ -7,11 +7,20 @@ import pandas as pd
 import seaborn as sns
 
 
-# Function to calculate the accuracy of our predictions vs labels
-def flat_accuracy(preds, labels):
+def sequence_accuracy(preds, labels):
+    """
+    Calculate sequence-level accuracy.
+    """
     pred_flat = np.argmax(preds, axis=1).flatten()
     labels_flat = labels.flatten()
     return np.sum(pred_flat == labels_flat) / len(labels_flat)
+
+
+def token_accuracy(preds, labels, mask):
+    """
+    Calculate token-level accuracy.
+    """
+    pass
 
 
 def format_time(elapsed):

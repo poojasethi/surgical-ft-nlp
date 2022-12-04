@@ -12,7 +12,7 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 
 from data import get_datasets, get_num_labels, get_test_dataloader, get_train_dataloader
 from model import get_model, get_tunable_parameters
-from utils import flat_accuracy, format_time
+from utils import sequence_accuracy, format_time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -65,10 +65,28 @@ def main(args: argparse.Namespace):
     train_dataloader = get_train_dataloader(train_dataset)
     validation_dataloader = get_test_dataloader(val_dataset)
 
-    train(model, train_dataloader, validation_dataloader, args.lr, args.eps, args.tunable_parameters, args.epochs)
+    train(
+        model,
+        args.model_type,
+        train_dataloader,
+        validation_dataloader,
+        args.lr,
+        args.eps,
+        args.tunable_parameters,
+        args.epochs,
+    )
 
 
-def train(model, train_dataloader, validation_dataloader, lr: float, eps: float, tunable_parameters: str, epochs: int):
+def train(
+    model,
+    model_type: str,
+    train_dataloader,
+    validation_dataloader,
+    lr: float,
+    eps: float,
+    tunable_parameters: str,
+    epochs: int,
+):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     optimizer = AdamW(
@@ -149,7 +167,7 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
 
     logger.info("")
     logger.info("  Average training loss: {0:.2f}".format(avg_train_loss))
-    logger.info("  Training epcoh took: {:}".format(training_time))
+    logger.info("  Training epoch took: {:}".format(training_time))
     # ========================================
     #               Validation
     # ========================================
@@ -194,17 +212,21 @@ def train(model, train_dataloader, validation_dataloader, lr: float, eps: float,
         # Accumulate the validation loss.
         total_eval_loss += loss.item()
 
-        # Move logits and labels to CPU
+        # Move logits, masks, and labels to CPU
         logits = logits.detach().cpu().numpy()
         label_ids = b_labels.to("cpu").numpy()
+        mask = b_input_mask.to("cpu").numpy()
 
         # Calculate the accuracy for this batch of test sentences, and
         # accumulate it over all batches.
-        total_eval_accuracy += flat_accuracy(logits, label_ids)
+        if model_type == "sequence":
+            total_eval_accuracy += sequence_accuracy(logits, label_ids)
+        elif model_type == "token":
+            continue
 
     # Report the final accuracy for this validation run.
     avg_val_accuracy = total_eval_accuracy / len(validation_dataloader)
-    logger.info("  Accuracy: {0:.2f}".format(avg_val_accuracy))
+    logger.info("  Batch Accuracy: {0:.2f}".format(avg_val_accuracy))
 
     # Calculate the average loss over all of the batches.
     avg_val_loss = total_eval_loss / len(validation_dataloader)
