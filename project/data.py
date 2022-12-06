@@ -18,11 +18,11 @@ SPECIAL_TOKEN_LABEL = -100
 MAX_BERT_LENGTH = 512
 
 
-def get_train_dataloader(train_dataset: Subset, batch_size: int = 32) -> DataLoader:
+def get_train_dataloader(train_dataset: Subset, batch_size: int) -> DataLoader:
     return DataLoader(train_dataset, sampler=RandomSampler(train_dataset), batch_size=batch_size)
 
 
-def get_test_dataloader(test_dataset: Subset, batch_size: int = 32) -> DataLoader:
+def get_test_dataloader(test_dataset: Subset, batch_size: int) -> DataLoader:
     """
     Return a DataLoader to use for validation or testing.
     """

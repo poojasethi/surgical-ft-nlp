@@ -56,6 +56,12 @@ def parse_args() -> argparse.Namespace:
         help="The number of epochs to run fine-tuning for. The BERT authors recommend between [2, 4].",
         default=4,
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        help="Batch size. I used 32 for sequence-level classification and 8 for token-level classification.",
+        default=8,
+    )
     return parser.parse_args()
 
 
@@ -65,8 +71,8 @@ def main(args: argparse.Namespace):
     model = get_model(args.model_type, num_labels)
 
     train_dataset, val_dataset, test_dataset = get_datasets(args.dataset)
-    train_dataloader = get_train_dataloader(train_dataset)
-    validation_dataloader = get_test_dataloader(val_dataset)
+    train_dataloader = get_train_dataloader(train_dataset, args.batch_size)
+    validation_dataloader = get_test_dataloader(val_dataset, args.batch_size)
 
     train(
         model,
