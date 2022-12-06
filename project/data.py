@@ -3,9 +3,7 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import torch
-from torch.utils.data import (DataLoader, Dataset, RandomSampler,
-                              SequentialSampler, Subset, TensorDataset,
-                              random_split)
+from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler, Subset, TensorDataset, random_split
 from transformers import BertTokenizer
 
 from datasets import load_dataset
@@ -253,6 +251,23 @@ def get_datasets(dataset: str) -> Tuple[Subset, Subset, Optional[Subset]]:
             create_token_level_dataset(train_dataset, "ner_tags", tokenizer),
             create_token_level_dataset(validation_dataset, "ner_tags", tokenizer),
             create_token_level_dataset(test_dataset, "ner_tags", tokenizer),
+        )
+
+        return train_dataset, validation_dataset, test_dataset
+    elif dataset == "conll-chunk":
+        datasets = load_dataset("conll2003")
+
+        train_dataset = datasets["train"]
+        validation_dataset = datasets["validation"]
+        test_dataset = datasets["test"]
+
+        logger.info("Loading BERT tokenizer")
+        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+
+        train_dataset, validation_dataset, test_dataset = (
+            create_token_level_dataset(train_dataset, "chunk_tags", tokenizer),
+            create_token_level_dataset(validation_dataset, "chunk_tags", tokenizer),
+            create_token_level_dataset(test_dataset, "chunk_tags", tokenizer),
         )
 
         return train_dataset, validation_dataset, test_dataset
