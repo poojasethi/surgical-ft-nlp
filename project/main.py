@@ -219,7 +219,9 @@ def train(
         # Calculate the accuracy for this batch of test sentences, and
         # accumulate it over all batches.
         if model_type == "sequence":
-            total_eval_accuracy += sequence_accuracy(logits, label_ids)
+            total_eval_accuracy, preds_flat, labels_flat = sequence_accuracy(logits, label_ids)
+            all_selected_predictions.extend(preds_flat.tolist())
+            all_selected_labels.extend(labels_flat.tolist())
         elif model_type == "token":
             eval_accuracy, selected_predictions, selected_label_ids = token_accuracy(
                 logits, label_ids, mask, num_labels
@@ -256,6 +258,7 @@ def train(
             "Valid. Accur.": avg_val_accuracy,
             "Training Time": training_time,
             "Validation Time": validation_time,
+            "Classification Report": classification_report,
         }
     )
     logger.info("")

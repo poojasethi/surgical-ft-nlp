@@ -13,9 +13,9 @@ def sequence_accuracy(preds, labels):
     """
     Calculate sequence-level accuracy.
     """
-    pred_flat = np.argmax(preds, axis=1).flatten()
+    preds_flat = np.argmax(preds, axis=1).flatten()
     labels_flat = labels.flatten()
-    return np.sum(pred_flat == labels_flat) / len(labels_flat)
+    return np.sum(preds_flat == labels_flat) / len(labels_flat), preds_flat, labels_flat
 
 
 def token_accuracy(preds, labels, mask, num_labels):
