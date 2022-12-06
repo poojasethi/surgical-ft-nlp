@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from seqeval.metrics import classification_report
+from sklearn.metrics import accuracy_score
 
 
 def sequence_accuracy(preds, labels):
@@ -16,11 +18,32 @@ def sequence_accuracy(preds, labels):
     return np.sum(pred_flat == labels_flat) / len(labels_flat)
 
 
-def token_accuracy(preds, labels, mask):
+def token_accuracy(preds, labels, mask, num_labels):
     """
     Calculate token-level accuracy.
     """
-    pass
+    # compute training accuracy
+    active_logits = np.reshape(preds, (-1, num_labels))  # (batch_size * seq_len, num_labels)
+    preds_flat = np.argmax(active_logits, axis=1)  # (batch_size * seq_len,)
+    labels_flat = labels.flatten()  # (batch_size * seq_len,)
+
+    # Use mask to determine where we should compare predictions with labels
+    # (Includes [CLS] and [SEP] token predictions)
+    active_accuracy = mask.flatten() == 1  # (batch_size * seq_len,)
+
+    labels = labels_flat[active_accuracy]
+    predictions = preds_flat[active_accuracy]
+
+    return accuracy_score(labels, predictions), predictions, labels
+
+
+def make_token_classification_report(all_preds, all_labels, label_id_to_str) -> str:
+    """
+    Calculate per-token metrics.
+    """
+    labels = [label_id_to_str[label_id] for label_id in all_labels]
+    predictions = [label_id_to_str[label_id] for label_id in all_preds]
+    return classification_report([labels], [predictions])
 
 
 def format_time(elapsed):

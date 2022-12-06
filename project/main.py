@@ -1,18 +1,18 @@
 import argparse
 import logging
-import random
-import time
 import os
 import pickle
-from typing import List, Dict, Any
+import random
+import time
+from typing import Any, Dict, List
 
 import numpy as np
 import torch
 from transformers import AdamW, get_linear_schedule_with_warmup
 
-from data import get_datasets, get_num_labels, get_test_dataloader, get_train_dataloader
+from data import dataset_to_labels, get_datasets, get_num_labels, get_test_dataloader, get_train_dataloader
 from model import get_model, get_tunable_parameters
-from utils import sequence_accuracy, format_time
+from utils import format_time, sequence_accuracy, token_accuracy, make_token_classification_report
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,7 +38,9 @@ torch.cuda.manual_seed_all(seed)
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model-type", required=True, choices=["sequence", "token"])
-    parser.add_argument("-d", "--dataset", required=True, choices=["glue-cola", "glue-sst", "conll-pos", "conll-ner"])
+    parser.add_argument(
+        "-d", "--dataset", required=True, choices=["glue-cola", "glue-sst", "conll-pos", "conll-ner", "conll-chunk"]
+    )
 
     parser.add_argument(
         "-p",
@@ -59,6 +61,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace):
     num_labels = get_num_labels(args.dataset)
+    label_id_to_str = dataset_to_labels(args.dataset)
     model = get_model(args.model_type, num_labels)
 
     train_dataset, val_dataset, test_dataset = get_datasets(args.dataset)
@@ -74,6 +77,8 @@ def main(args: argparse.Namespace):
         args.eps,
         args.tunable_parameters,
         args.epochs,
+        num_labels,
+        label_id_to_str,
     )
 
 
@@ -86,6 +91,8 @@ def train(
     eps: float,
     tunable_parameters: str,
     epochs: int,
+    num_labels: int,
+    label_id_to_str: Dict[int, str],
 ):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -187,32 +194,24 @@ def train(
     total_eval_accuracy = 0
     total_eval_loss = 0
 
+    all_selected_predictions = []
+    all_selected_labels = []
+
     for batch in validation_dataloader:
         b_input_ids = batch[0].to(device)
         b_input_mask = batch[1].to(device)
         b_labels = batch[2].to(device)
 
-        # Tell pytorch not to bother with constructing the compute graph during
-        # the forward pass, since this is only needed for backprop (training).
         with torch.no_grad():
-
-            # Forward pass, calculate logit predictions.
-            # token_type_ids is the same as the "segment ids", which
-            # differentiates sentence 1 and 2 in 2-sentence tasks.
             result = model(
                 b_input_ids, token_type_ids=None, attention_mask=b_input_mask, labels=b_labels, return_dict=True
             )
 
-        # Get the loss and "logits" output by the model. The "logits" are the
-        # output values prior to applying an activation function like the
-        # softmax.
         loss = result.loss
         logits = result.logits
 
-        # Accumulate the validation loss.
         total_eval_loss += loss.item()
 
-        # Move logits, masks, and labels to CPU
         logits = logits.detach().cpu().numpy()
         label_ids = b_labels.to("cpu").numpy()
         mask = b_input_mask.to("cpu").numpy()
@@ -222,7 +221,12 @@ def train(
         if model_type == "sequence":
             total_eval_accuracy += sequence_accuracy(logits, label_ids)
         elif model_type == "token":
-            continue
+            eval_accuracy, selected_predictions, selected_label_ids = token_accuracy(
+                logits, label_ids, mask, num_labels
+            )
+            total_eval_accuracy += eval_accuracy
+            all_selected_predictions.extend(selected_predictions.tolist())
+            all_selected_labels.extend(selected_label_ids.tolist())
 
     # Report the final accuracy for this validation run.
     avg_val_accuracy = total_eval_accuracy / len(validation_dataloader)
@@ -231,11 +235,17 @@ def train(
     # Calculate the average loss over all of the batches.
     avg_val_loss = total_eval_loss / len(validation_dataloader)
 
-    # Measure how long the validation run took.
     validation_time = format_time(time.time() - t0)
 
     logger.info("  Validation Loss: {0:.2f}".format(avg_val_loss))
     logger.info("  Validation took: {:}".format(validation_time))
+
+    classification_report = make_token_classification_report(
+        all_selected_predictions, all_selected_predictions, label_id_to_str
+    )
+
+    logger.info("Classification report")
+    logger.info(classification_report)
 
     # Record all statistics from this epoch.
     training_stats.append(
