@@ -42,7 +42,7 @@ def get_tunable_parameters(model, option="all"):
 
     if type(model) == BertForSequenceClassification:
         parameters.extend(model.classifier.parameters())
-    if type(model) == BertForTokenClassification:
+    elif type(model) == BertForTokenClassification:
         parameters.extend(model.classifier.parameters())
     else:
         raise NotImplementedError(f"Unknown model type {type(model)}")
