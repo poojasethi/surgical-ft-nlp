@@ -1,4 +1,6 @@
 # Environment Setup
+conda create --name 330-project python=3.9
+pip install -r requirements.txt
 
 # Training models
 # Example usage:
