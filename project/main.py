@@ -150,7 +150,13 @@ def train(
             model.zero_grad()
 
             result = model(
-                b_input_ids, token_type_ids=None, attention_mask=b_input_mask, labels=b_labels, return_dict=True
+                b_input_ids,
+                token_type_ids=None,
+                attention_mask=b_input_mask,
+                labels=b_labels,
+                return_dict=True,
+                output_hidden_states=False,
+                output_attentions=False,
             )
 
             loss = result.loss
@@ -165,6 +171,9 @@ def train(
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()  # Update model parameters
             scheduler.step()  # Update the learning rate
+
+            # if step == 0:
+            #    break
 
     # Calculate the average loss over all of the batches.
     avg_train_loss = total_train_loss / len(train_dataloader)
@@ -197,6 +206,8 @@ def train(
     all_selected_predictions = []
     all_selected_labels = []
 
+    count = 0
+
     for batch in validation_dataloader:
         b_input_ids = batch[0].to(device)
         b_input_mask = batch[1].to(device)
@@ -204,7 +215,13 @@ def train(
 
         with torch.no_grad():
             result = model(
-                b_input_ids, token_type_ids=None, attention_mask=b_input_mask, labels=b_labels, return_dict=True
+                b_input_ids,
+                token_type_ids=None,
+                attention_mask=b_input_mask,
+                labels=b_labels,
+                return_dict=True,
+                output_hidden_states=False,
+                output_attentions=False,
             )
 
         loss = result.loss
@@ -230,6 +247,9 @@ def train(
             all_selected_predictions.extend(selected_predictions.tolist())
             all_selected_labels.extend(selected_label_ids.tolist())
 
+    #        if count == 0:
+    #            break
+
     # Report the final accuracy for this validation run.
     avg_val_accuracy = total_eval_accuracy / len(validation_dataloader)
     logger.info("  Batch Accuracy: {0:.2f}".format(avg_val_accuracy))
@@ -243,11 +263,12 @@ def train(
     logger.info("  Validation took: {:}".format(validation_time))
 
     classification_report = make_token_classification_report(
-        all_selected_predictions, all_selected_predictions, label_id_to_str
+        all_selected_predictions, all_selected_labels, label_id_to_str
     )
 
     logger.info("Classification report")
     logger.info(classification_report)
+    # breakpoint()
 
     # Record all statistics from this epoch.
     training_stats.append(
