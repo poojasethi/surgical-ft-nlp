@@ -172,9 +172,6 @@ def train(
             optimizer.step()  # Update model parameters
             scheduler.step()  # Update the learning rate
 
-            # if step == 0:
-            #    break
-
     # Calculate the average loss over all of the batches.
     avg_train_loss = total_train_loss / len(train_dataloader)
 
@@ -205,8 +202,6 @@ def train(
 
     all_selected_predictions = []
     all_selected_labels = []
-
-    count = 0
 
     for batch in validation_dataloader:
         b_input_ids = batch[0].to(device)
@@ -247,9 +242,6 @@ def train(
             all_selected_predictions.extend(selected_predictions.tolist())
             all_selected_labels.extend(selected_label_ids.tolist())
 
-    #        if count == 0:
-    #            break
-
     # Report the final accuracy for this validation run.
     avg_val_accuracy = total_eval_accuracy / len(validation_dataloader)
     logger.info("  Batch Accuracy: {0:.2f}".format(avg_val_accuracy))
@@ -268,7 +260,6 @@ def train(
 
     logger.info("Classification report")
     logger.info(classification_report)
-    # breakpoint()
 
     # Record all statistics from this epoch.
     training_stats.append(
