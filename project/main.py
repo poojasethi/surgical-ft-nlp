@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
         "-p",
         "--tunable-parameters",
         required=True,
-        choices=["all", "group_1", "group_2", "group_3", "group_4", "group_5"],
+        choices=["none", "all", "group_1", "group_2", "group_3", "group_4", "group_5"],
     )
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--eps", type=float, help="Epsilon value for Adam", default=1e-8)
