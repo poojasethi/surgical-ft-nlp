@@ -1,10 +1,11 @@
 This is a class project for CS 330: Deep Multi-Task and Meta-Learning.
 
-Here, I examine the benefits of surgical fine-tuning for NLP, and whether the results reflect the
+Here, I examine the benefits of surgical fine-tuning for NLP and whether the results reflect the
 "classical NLP pipeline".
 
-Check out the poster or YouTube [video](https://youtu.be/bkVZYqq7fQY) for more details :)
 ![CS 330: Deep Multi-Task and Meta-Learning Poster](CS_330_Poster.png)
+
+Check out the poster or YouTube [video](https://youtu.be/bkVZYqq7fQY) for more details.
 
 # Environment Setup
 ```
