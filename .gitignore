@@ -132,10 +132,5 @@ dmypy.json
 .DS_store
 
 # Custom
-hw0/movielens_data
-
-hw1/omniglot_resized
-hw1/omniglot_resized.zip
-hw2/logs/
-hw2/hw2.pdf
-hw2/starter.zip
+datasets/
+**/pytorch_model.bin
