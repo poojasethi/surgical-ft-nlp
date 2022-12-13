@@ -5,7 +5,7 @@ Here, I examine the benefits of surgical fine-tuning for NLP and whether the res
 
 ![CS 330: Deep Multi-Task and Meta-Learning Poster](CS_330_Poster.png)
 
-Check out the poster or YouTube [video](https://youtu.be/bkVZYqq7fQY) for more details.
+Check out the poster, [paper](CS_330_Report.pdf), and YouTube [video](https://youtu.be/bkVZYqq7fQY) for more details.
 
 # Environment Setup
 ```
